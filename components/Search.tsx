@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, ReactNode } from 'react'
 import { useRouter } from 'next/router'
 import debounce from 'lodash/debounce'
 import { useTranslation } from 'components/hooks/useTranslation'
-import { sendEvent } from '../javascripts/events'
+import { sendEvent, EventType } from '../javascripts/events'
 import { useMainContext } from './context/MainContext'
 import { useVersion } from 'components/hooks/useVersion'
+import cx from 'classnames'
 
 type SearchResult = {
   url: string
@@ -14,10 +15,16 @@ type SearchResult = {
   content: string
 }
 
+type Props = {
+  isStandalone?: boolean
+  updateSearchParams?: boolean
+  children?: (props: { SearchInput: ReactNode; SearchResults: ReactNode }) => ReactNode
+}
 // Homepage and 404 should be `isStandalone`, all others not
 // `updateSearchParams` should be false on the GraphQL explorer page
-export function Search({ isStandalone = false, updateSearchParams = true }) {
-  const [query, setQuery] = useState('')
+export function Search({ isStandalone = false, updateSearchParams = true, children }: Props) {
+  const router = useRouter()
+  const [query, setQuery] = useState(router.query.query || '')
   const [results, setResults] = useState<Array<SearchResult>>([])
   const [activeHit, setActiveHit] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -25,22 +32,16 @@ export function Search({ isStandalone = false, updateSearchParams = true }) {
   const { currentVersion } = useVersion()
 
   // Figure out language and version for index
-  const { expose } = useMainContext()
-  const { searchOptions: { languages, versions, nonEnterpriseDefaultVersion } } = JSON.parse(expose)
-  const router = useRouter()
+  const { languages, searchVersions, nonEnterpriseDefaultVersion } = useMainContext()
   // fall back to the non-enterprise default version (FPT currently) on the homepage, 404 page, etc.
-  const version = versions[currentVersion] || versions[nonEnterpriseDefaultVersion]
-  const language = languages.includes(router.locale) && router.locale || 'en'
+  const version = searchVersions[currentVersion] || searchVersions[nonEnterpriseDefaultVersion]
+  const language = (Object.keys(languages).includes(router.locale || '') && router.locale) || 'en'
 
   // If the user shows up with a query in the URL, go ahead and search for it
   useEffect(() => {
-    const params = new URLSearchParams(location.search)
-    if (params.has('query')) {
-      const xquery = params.get('query')?.trim() || ''
-      setQuery(xquery)
-      /* await */ fetchSearchResults(xquery)
+    if (router.query.query) {
+      /* await */ fetchSearchResults((router.query.query as string).trim())
     }
-    return () => setQuery('')
   }, [])
 
   // Search with your keyboard
@@ -49,11 +50,11 @@ export function Search({ isStandalone = false, updateSearchParams = true }) {
     return () => document.removeEventListener('keydown', searchWithYourKeyboard)
   }, [results, activeHit])
 
-  function searchWithYourKeyboard (event: KeyboardEvent) {
+  function searchWithYourKeyboard(event: KeyboardEvent) {
     switch (event.key) {
       case '/':
-        // when the input is focused, `/` should have no special behavior
-        if ((event.target as HTMLInputElement)?.type === 'search') break
+        // when an input is focused, `/` should have no special behavior
+        if (['INPUT', 'TEXTAREA', 'SEARCH'].includes(document?.activeElement?.tagName || '')) break
         event.preventDefault() // prevent slash from being typed into input
         inputRef.current?.focus()
         break
@@ -100,7 +101,7 @@ export function Search({ isStandalone = false, updateSearchParams = true }) {
 
   // If there's a query, call the endpoint
   // Otherwise, there's no results by default
-  async function fetchSearchResults (xquery: string) {
+  async function fetchSearchResults(xquery: string) {
     if (xquery) {
       const endpointUrl = new URL(location.origin)
       endpointUrl.pathname = '/search'
@@ -123,58 +124,35 @@ export function Search({ isStandalone = false, updateSearchParams = true }) {
     // Analytics tracking
     if (xquery) {
       sendEvent({
-        type: 'search',
-        search_query: xquery
+        type: EventType.search,
+        search_query: xquery,
         // search_context
       })
     }
   }
 
   // Close panel if overlay is clicked
-  function closeSearch () {
+  function closeSearch() {
     setQuery('')
     setResults([])
   }
 
   // Prevent the page from refreshing when you "submit" the form
-  function preventRefresh (evt: React.FormEvent) {
+  function preventRefresh(evt: React.FormEvent) {
     evt.preventDefault()
   }
 
-  return (
-    <div className="pt-3 pt-md-0 d-md-inline-block ml-md-3 border-top border-md-top-0">
-      <div id="search-input-container" aria-hidden="true">
-        <div className="ais-SearchBox">
-          <form role="search" className="ais-SearchBox-form" noValidate onSubmit={preventRefresh}>
-            <input
-              ref={inputRef}
-              className={"ais-SearchBox-input" + (isStandalone || query ? ' js-open' : '')}
-              type="search"
-              placeholder={t`placeholder`}
-              autoFocus={!isStandalone}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck="false"
-              maxLength={512}
-              onChange={debounce(onSearch, 200)}
-              defaultValue={query}
-            />
-            <button
-              className="ais-SearchBox-submit"
-              type="submit"
-              title="Submit the search query."
-              hidden
-            />
-          </form>
-        </div>
-      </div>
+  const SearchResults = (
+    <>
       <div id="search-results-container" className={results.length ? 'js-open' : ''}>
         {Boolean(results.length) && (
           <div className="ais-Hits d-block">
             <ol className="ais-Hits-list">
               {results.map(({ url, breadcrumbs, heading, title, content }, index) => (
-                <li key={url} className={'ais-Hits-item' + ((index + 1) === activeHit ? ' active' : '')}>
+                <li
+                  key={url}
+                  className={'ais-Hits-item' + (index + 1 === activeHit ? ' active' : '')}
+                >
                   <div className="search-result border-top color-border-secondary py-3 px-2">
                     <a className="no-underline" href={url}>
                       {/* Breadcrumbs in search records don't include the page title. These fields may contain <mark> elements that we need to render */}
@@ -184,7 +162,9 @@ export function Search({ isStandalone = false, updateSearchParams = true }) {
                       />
                       <div
                         className="search-result-title d-block h4-mktg color-text-primary"
-                        dangerouslySetInnerHTML={{ __html: heading ? `${title}: ${heading}` : title }}
+                        dangerouslySetInnerHTML={{
+                          __html: heading ? `${title}: ${heading}` : title,
+                        }}
                       />
                       <div
                         className="search-result-content d-block color-text-secondary"
@@ -198,7 +178,55 @@ export function Search({ isStandalone = false, updateSearchParams = true }) {
           </div>
         )}
       </div>
-      <div className={'search-overlay-desktop' + (!isStandalone && query ? ' js-open' : '')} onClick={closeSearch}></div>
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+      <div
+        className={cx('search-overlay-desktop', !isStandalone && query ? 'js-open' : '')}
+        onClick={closeSearch}
+      ></div>
+    </>
+  )
+
+  const SearchInput = (
+    <div id="search-input-container" aria-hidden="true">
+      <div className="ais-SearchBox">
+        <form role="search" className="ais-SearchBox-form" noValidate onSubmit={preventRefresh}>
+          <input
+            data-testid="site-search-input"
+            ref={inputRef}
+            className={cx('ais-SearchBox-input', isStandalone || query ? 'js-open' : '')}
+            type="search"
+            placeholder={t`placeholder`}
+            /* eslint-disable-next-line jsx-a11y/no-autofocus */
+            autoFocus={isStandalone}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck="false"
+            maxLength={512}
+            onChange={debounce(onSearch, 200)}
+            defaultValue={query}
+          />
+          <button
+            className="ais-SearchBox-submit"
+            type="submit"
+            title="Submit the search query."
+            hidden
+          />
+        </form>
+      </div>
     </div>
+  )
+
+  return (
+    <>
+      {typeof children === 'function' ? (
+        children({ SearchInput, SearchResults })
+      ) : (
+        <>
+          {SearchInput}
+          {SearchResults}
+        </>
+      )}
+    </>
   )
 }
