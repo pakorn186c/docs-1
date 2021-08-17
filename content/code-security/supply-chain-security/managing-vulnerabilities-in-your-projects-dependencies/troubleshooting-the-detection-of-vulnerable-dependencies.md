@@ -1,7 +1,7 @@
 ---
 title: Troubleshooting the detection of vulnerable dependencies
 intro: 'If the dependency information reported by {% data variables.product.product_name %} is not what you expected, there are a number of points to consider, and various things you can check.'
-shortTitle: Troubleshooting detection
+shortTitle: Troubleshoot detection
 redirect_from:
   - /github/managing-security-vulnerabilities/troubleshooting-the-detection-of-vulnerable-dependencies
   - /code-security/supply-chain-security/troubleshooting-the-detection-of-vulnerable-dependencies
@@ -71,7 +71,7 @@ Yes, the dependency graph has two categories of limits:
 
     Manifests over 0.5 MB in size are only processed for enterprise accounts. For other accounts, manifests over 0.5 MB are ignored and will not create {% data variables.product.prodname_dependabot_alerts %}.
 
-    By default, {% data variables.product.prodname_dotcom %} will not process more than 20 manifests per repository. {% data variables.product.prodname_dependabot_alerts %} are not be created for manifests beyond this limit. If you need to increase the limit, contact {% data variables.contact.contact_support %}. 
+    By default, {% data variables.product.prodname_dotcom %} will not process more than 20 manifests per repository. {% data variables.product.prodname_dependabot_alerts %} are not created for manifests beyond this limit. If you need to increase the limit, contact {% data variables.contact.contact_support %}. 
 
 2. **Visualization limits**
 
